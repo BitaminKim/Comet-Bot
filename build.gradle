@@ -94,7 +94,7 @@ dependencies {
     implementation 'dnsjava:dnsjava:3.4.2'
 
     implementation 'io.ktor:ktor-server-core:1.5.4'
-    implementation 'io.ktor:ktor-server-netty:1.5.4'
+    implementation 'io.ktor:ktor-server-netty:1.6.5'
 
     implementation 'com.github.StarWishsama:rkon-core:master-SNAPSHOT'
 }
