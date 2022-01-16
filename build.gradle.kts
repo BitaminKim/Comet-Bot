@@ -14,14 +14,14 @@ import java.time.format.DateTimeFormatter
 plugins {
     kotlin("jvm") version "1.6.10"
     kotlin("plugin.serialization") version "1.6.10"
-    id("com.github.johnrengelman.shadow") version "7.1.1"
+    id("com.github.johnrengelman.shadow") version "7.1.2"
     id("com.github.gmazzo.buildconfig") version "3.0.3"
 }
 
 group = "io.github.starwishsama.comet"
 version = "0.6.5" + getGitInfo()
 
-tasks.getting(Jar::class) {
+tasks.jar {
     manifest {
         attributes["Main-Class"] = "io.github.starwishsama.comet.CometApplication"
         attributes["Author"] = "StarWishsama"
