@@ -12,60 +12,69 @@ package io.github.starwishsama.comet.service.pusher.pushers
 
 import io.github.starwishsama.comet.CometVariables
 import io.github.starwishsama.comet.api.thirdparty.bilibili.DynamicApi
-import io.github.starwishsama.comet.api.thirdparty.bilibili.data.dynamic.Dynamic
-import io.github.starwishsama.comet.api.thirdparty.bilibili.data.dynamic.convertToDynamicData
 import io.github.starwishsama.comet.exceptions.ApiException
 import io.github.starwishsama.comet.managers.GroupConfigManager
 import io.github.starwishsama.comet.service.pusher.CometPusher
 import io.github.starwishsama.comet.service.pusher.CometPusherData
 import io.github.starwishsama.comet.service.pusher.context.BiliBiliDynamicContext
+import io.github.starwishsama.comet.utils.NumberUtil.toLocalDateTime
+import io.github.starwishsama.comet.utils.noCatchCancellation
+import kotlinx.coroutines.runBlocking
+import moe.sdl.yabapi.data.feed.FeedCardNode
 
 import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
 
 class BiliBiliDynamicPusher : CometPusher("bili_dynamic", CometPusherData(3, TimeUnit.MINUTES)) {
     override fun retrieve() {
-        GroupConfigManager.getAllConfigs().parallelStream().forEach { config ->
+        GroupConfigManager.getAllConfigs().forEach { config ->
             if (!config.biliPushEnabled) {
                 return@forEach
             }
 
             config.biliSubscribers.forEach user@{ user ->
-                val cache =
-                    data.cache.find { (it as BiliBiliDynamicContext).pushUser.id == user.id } as BiliBiliDynamicContext?
+                kotlin.runCatching {
+                    val cache =
+                        data.cache.find { (it as BiliBiliDynamicContext).pushUser.id == user.id } as BiliBiliDynamicContext?
 
-                val dynamic: Dynamic = try {
-                    DynamicApi.getUserDynamicTimeline(user.id.toLong())
-                } catch (e: RuntimeException) {
-                    if (e !is ApiException) {
-                        CometVariables.daemonLogger.warning("在获取动态时出现了异常", e)
+                    val dynamic: FeedCardNode = try {
+                        runBlocking { DynamicApi.getUserDynamicTimeline(user.id.toInt())?.firstOrNull() }
+                    } catch (e: Exception) {
+                        if (e !is ApiException) {
+                            CometVariables.daemonLogger.warning("在获取动态时出现了异常", e)
+                        }
+                        null
+                    } ?: return@user
+
+                    val sentTime = dynamic.description?.timestamp?.toLocalDateTime() ?: return@user
+
+                    // Avoid too outdated dynamic
+                    if (sentTime.plusDays(1).isBefore(LocalDateTime.now())) {
+                        return@user
                     }
-                    null
-                } ?: return@user
 
-                val sentTime = dynamic.convertToDynamicData()?.getSentTime() ?: return@user
+                    val time = System.currentTimeMillis()
 
-                // Avoid too outdated dynamic
-                if (sentTime.plusDays(1).isBefore(LocalDateTime.now())) {
-                    return@user
-                }
+                    val current = BiliBiliDynamicContext(
+                        mutableSetOf(config.id),
+                        time,
+                        pushUser = user,
+                        dynamicId = dynamic.description?.dynamicId!!.toLong()
+                    )
 
-                val time = System.currentTimeMillis()
+                    if (cache == null) {
+                        data.cache.add(current)
+                    } else if (!cache.contentEquals(current)) {
+                        data.cache.remove(cache)
+                        data.cache.add(current.also {
+                            it.addPushTargets(cache.pushTarget)
+                        })
+                    } else {
+                        cache.addPushTarget(config.id)
+                    }
 
-                val current = BiliBiliDynamicContext(
-                    mutableSetOf(config.id),
-                    time,
-                    pushUser = user,
-                    dynamicId = dynamic.getDynamicID()
-                )
-
-                if (cache == null) {
-                    data.cache.add(current)
-                } else if (!cache.contentEquals(current)) {
-                    data.cache.remove(cache)
-                    data.cache.add(current.also {
-                        it.addPushTargets(cache.pushTarget)
-                    })
+                }.noCatchCancellation {
+                    CometVariables.daemonLogger.warning("在获取 ${user.id} 的动态时出现了异常", it)
                 }
             }
         }

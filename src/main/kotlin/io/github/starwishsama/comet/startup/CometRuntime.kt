@@ -10,6 +10,7 @@
 
 package io.github.starwishsama.comet.startup
 
+import cn.hutool.cron.CronUtil
 import io.github.starwishsama.comet.BuildConfig
 import io.github.starwishsama.comet.CometApplication
 import io.github.starwishsama.comet.CometVariables
@@ -33,19 +34,20 @@ import io.github.starwishsama.comet.commands.console.DebugCommand
 import io.github.starwishsama.comet.commands.console.StopCommand
 import io.github.starwishsama.comet.file.DataSaveHelper
 import io.github.starwishsama.comet.file.DataSetup
+import io.github.starwishsama.comet.genshin.gacha.pool.GachaPoolManager
 import io.github.starwishsama.comet.listeners.*
 import io.github.starwishsama.comet.logger.HinaLogLevel
+import io.github.starwishsama.comet.logger.YabapiLogRedirecter
+import io.github.starwishsama.comet.managers.GroupConfigManager
 import io.github.starwishsama.comet.managers.NetworkRequestManager
 import io.github.starwishsama.comet.objects.tasks.GroupFileAutoRemover
+import io.github.starwishsama.comet.objects.tasks.HitokotoUpdater
 import io.github.starwishsama.comet.service.RetrofitLogger
 import io.github.starwishsama.comet.service.gacha.GachaService
 import io.github.starwishsama.comet.service.pusher.PusherManager
 import io.github.starwishsama.comet.service.server.CometServiceServer
-import io.github.starwishsama.comet.utils.FileUtil
-import io.github.starwishsama.comet.utils.LoggerAppender
-import io.github.starwishsama.comet.utils.RuntimeUtil
+import io.github.starwishsama.comet.utils.*
 import io.github.starwishsama.comet.utils.StringUtil.getLastingTimeAsString
-import io.github.starwishsama.comet.utils.TaskUtil
 import io.github.starwishsama.comet.utils.network.NetUtil
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
@@ -104,11 +106,13 @@ object CometRuntime {
             arrayOf(
                 AdminCommand,
                 ArkNightCommand,
+                BangumiCommand,
                 BiliBiliCommand,
                 CheckInCommand,
-                ClockInCommand,
                 io.github.starwishsama.comet.commands.chats.DebugCommand,
                 DivineCommand,
+                GaokaoCommand,
+                GenshinGachaCommand,
                 GuessNumberCommand,
                 HelpCommand,
                 InfoCommand,
@@ -131,6 +135,7 @@ object CometRuntime {
                 NoAbbrCommand,
                 JikiPediaCommand,
                 KeyWordCommand,
+                ToUnicodeCommand,
                 // Console Command
                 StopCommand,
                 DebugCommand,
@@ -139,19 +144,19 @@ object CometRuntime {
             )
         )
 
+        YabapiLogRedirecter.initYabapi()
+
         logger.info("[命令] 已注册 " + CommandManager.countCommands() + " 个命令")
     }
 
     private fun shutdownTask() {
         logger.info("[Bot] 正在关闭 Bot...")
+        CronUtil.stop()
         DataSetup.saveAllResources()
         PusherManager.stopPushers()
         cometServiceServer?.stop()
-        TaskUtil.dispatcher.close()
 
-        if (!TaskUtil.service.isShutdown) {
-            TaskUtil.service.shutdown()
-        }
+        TaskUtil.service.shutdown()
 
         CometVariables.rCon?.disconnect()
         CometVariables.miraiLoggerAppender.close()
@@ -168,18 +173,25 @@ object CometRuntime {
             BotGroupStatusListener,
             AutoReplyListener,
             GroupMemberChangedListener,
-            GroupRequestListener
+            GroupRequestListener,
+            NormalizeMessageSendListener
         )
 
         listeners.forEach { it.register(bot) }
 
         DataSetup.initPerGroupSetting(bot)
 
-        setupRCon()
+        runCatching {
+            setupRCon()
+        }.onFailure {
+            daemonLogger.warning("无法连接至 rcon 服务器", it)
+        }
 
         runScheduleTasks()
 
         PusherManager.startPushers()
+
+        GachaPoolManager.init()
 
         startupServer()
 
@@ -197,9 +209,11 @@ object CometRuntime {
         val password = cfg.rConPassword
         if (address != null && password != null && CometVariables.rCon == null) {
             CometVariables.rCon = Rcon(address, cfg.rConPort, password.toByteArray())
+            daemonLogger.info("成功连接至 rcon 服务器")
         }
     }
 
+    @Suppress("HttpUrlsUsage")
     private fun startupServer() {
         if (!cfg.webHookSwitch) {
             return
@@ -232,12 +246,24 @@ object CometRuntime {
         }
 
         TaskUtil.scheduleAtFixedRate(1, 1, TimeUnit.HOURS) {
+            RuntimeUtil.forceGC()
             GroupFileAutoRemover.execute()
+            HitokotoUpdater.run()
         }
 
-        TaskUtil.scheduleAtFixedRate(1, 1, TimeUnit.HOURS) {
-            RuntimeUtil.forceGC()
-        }
+        CronUtil.schedule("0 0 8 * * ?", Runnable {
+            GroupConfigManager.getAllConfigs().filter { it.gaokaoPushEnabled }.forEach {
+                runBlocking {
+                    comet.getBot().getGroup(it.id)?.sendMessage(
+                        "现在距离${LocalDateTime.now().year}年普通高等学校招生全国统一考试还有${
+                            gaokaoDateTime.getLastingTimeAsString(TimeUnit.DAYS)
+                        }。"
+                    )
+                }
+            }
+        })
+
+        CronUtil.start()
     }
 
     fun handleConsoleCommand() {

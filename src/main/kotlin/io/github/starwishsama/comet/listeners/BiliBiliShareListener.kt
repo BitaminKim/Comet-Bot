@@ -13,53 +13,56 @@ package io.github.starwishsama.comet.listeners
 import com.fasterxml.jackson.databind.JsonNode
 import io.github.starwishsama.comet.CometVariables
 import io.github.starwishsama.comet.CometVariables.mapper
+import io.github.starwishsama.comet.api.thirdparty.bilibili.DynamicApi
 import io.github.starwishsama.comet.api.thirdparty.bilibili.VideoApi
+import io.github.starwishsama.comet.api.thirdparty.bilibili.feed.toMessageWrapper
+import io.github.starwishsama.comet.api.thirdparty.bilibili.video.toMessageWrapper
 import io.github.starwishsama.comet.managers.GroupConfigManager
-import io.github.starwishsama.comet.utils.network.NetUtil
+import io.github.starwishsama.comet.objects.CometUser
+import io.github.starwishsama.comet.objects.wrapper.MessageWrapper
+import io.github.starwishsama.comet.utils.StringUtil.isNumeric
+import io.github.starwishsama.comet.utils.network.parseBiliURL
 import io.github.starwishsama.comet.utils.serialize.isUsable
 import kotlinx.coroutines.runBlocking
+import moe.sdl.yabapi.data.feed.FeedCardNode
 import net.mamoe.mirai.contact.Contact
 import net.mamoe.mirai.contact.isBotMuted
 import net.mamoe.mirai.event.events.GroupMessageEvent
 import net.mamoe.mirai.message.data.EmptyMessageChain
 import net.mamoe.mirai.message.data.LightApp
 import net.mamoe.mirai.message.data.MessageChain
-import net.mamoe.mirai.utils.MiraiExperimentalApi
-import kotlin.time.ExperimentalTime
+import okhttp3.internal.toLongOrDefault
 
 object BiliBiliShareListener : INListener {
     override val name: String
         get() = "哔哩哔哩解析"
 
-    private val bvPattern = Regex("""https://b23.tv/\w{1,6}""")
-    private val longUrlPattern = Regex("""https://www.bilibili.com/video/(av|BV)\w{1,10}""")
-
-    @OptIn(MiraiExperimentalApi::class, ExperimentalTime::class)
     @EventHandler
     fun listen(event: GroupMessageEvent) {
         if (!event.group.isBotMuted) {
+            // Check parse feature is available
             if (GroupConfigManager.getConfig(event.group.id)?.canParseBiliVideo != true) {
                 return
             }
 
-            val targetURL = bvPattern.find(event.message.contentToString())?.groups?.get(0)?.value
-                ?: longUrlPattern.find(event.message.contentToString())?.groups?.get(0)?.value
-                ?: return
+            val message = event.message.contentToString()
 
-            val checkResult = biliBiliLinkConvert(targetURL, event.subject)
+            val convertResult = biliBiliLinkConvert(message, event.subject)
 
-            if (checkResult.isNotEmpty()) {
-                runBlocking {
-                    event.subject.sendMessage(checkResult)
-                }
+            if (convertResult.isEmpty() && event.message.none { it is LightApp }) {
                 return
             }
 
-            val lightApp = event.message[LightApp] ?: return
+            if (CometUser.getUser(event.sender.id)?.isNoCoolDown() == true) {
+                val result = convertResult.ifEmpty {
+                    val lightApp = event.message[LightApp] ?: return
 
-            val result = parseJsonMessage(lightApp, event.subject)
-            if (result.isNotEmpty()) {
-                runBlocking { event.subject.sendMessage(result) }
+                    parseJsonMessage(lightApp, event.subject).ifEmpty { EmptyMessageChain }
+                }
+
+                if (result.isNotEmpty()) {
+                    runBlocking { event.subject.sendMessage(result) }
+                }
             }
         }
     }
@@ -88,33 +91,30 @@ object BiliBiliShareListener : INListener {
     }
 
     private fun biliBiliLinkConvert(url: String, subject: Contact): MessageChain {
-        val videoID = if (bvPattern.matches(url)) {
-            parseVideoIDFromBili(NetUtil.getRedirectedURL(url) ?: return EmptyMessageChain)
-        } else {
-            parseVideoIDFromBili(url)
-        }
+        val id = parseBiliURL(url) ?: return EmptyMessageChain
 
-        val videoInfo = if (videoID.contains("BV")) {
-            VideoApi.videoService.getVideoInfoByBID(videoID)
+        val result = if (id.isNumeric()) {
+            val dynamic: FeedCardNode = runBlocking {
+                return@runBlocking DynamicApi.getDynamicById(id.toLongOrDefault(-1))
+            } ?: return EmptyMessageChain
+
+            dynamic.toMessageWrapper()
         } else {
-            VideoApi.videoService.getVideoInfo(videoID)
-        }.execute().body() ?: return EmptyMessageChain
+            runBlocking {
+                return@runBlocking if (id.contains("BV")) {
+                    VideoApi.getVideoInfo(id)
+                } else {
+                    VideoApi.getVideoInfo(id.lowercase().replace("av", "").toInt())
+                }
+            }?.toMessageWrapper() ?: MessageWrapper().setUsable(false)
+        }
 
         return runBlocking {
-            val wrapper = videoInfo.toMessageWrapper()
-            return@runBlocking if (!wrapper.isUsable()) {
+            return@runBlocking if (!result.isUsable() || result.isEmpty()) {
                 EmptyMessageChain
             } else {
-                wrapper.toMessageChain(subject)
+                result.toMessageChain(subject)
             }
         }
-    }
-
-    private fun parseVideoIDFromBili(url: String): String {
-        val videoID = url.substring(0, if (url.indexOf("?") == -1) url.length else url.indexOf("?"))
-            .replace("https", "")
-            .replace("https", "")
-            .split("/")
-        return videoID.last()
     }
 }

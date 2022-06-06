@@ -10,37 +10,48 @@
 
 package io.github.starwishsama.comet.service.pusher.context
 
-import io.github.starwishsama.comet.api.thirdparty.bilibili.data.live.LiveRoomInfo
+import io.github.starwishsama.comet.api.thirdparty.bilibili.live.LiveStatus
+import io.github.starwishsama.comet.api.thirdparty.bilibili.live.isLiveTimeInvalid
+import io.github.starwishsama.comet.api.thirdparty.bilibili.live.parseLiveTime
+import io.github.starwishsama.comet.api.thirdparty.bilibili.util.buildImagePreview
 import io.github.starwishsama.comet.objects.push.BiliBiliUser
 import io.github.starwishsama.comet.objects.wrapper.MessageWrapper
 import io.github.starwishsama.comet.service.pusher.PushStatus
+import kotlinx.serialization.Serializable
 
 class BiliBiliLiveContext(
     pushTarget: MutableSet<Long>,
     retrieveTime: Long,
     status: PushStatus = PushStatus.PENDING,
     val pushUser: BiliBiliUser,
-    val liveRoomInfo: LiveRoomInfo,
+    val liveRoomInfo: SimpleLiveRoomData,
 ) : PushContext(pushTarget, retrieveTime, status), Pushable {
     override fun toMessageWrapper(): MessageWrapper {
-        val data = liveRoomInfo.data
-
-        if (data.getStatus() != LiveRoomInfo.LiveRoomInfoData.Status.Streaming) {
+        if (liveRoomInfo.liveStatus != LiveStatus.Streaming) {
             return MessageWrapper().addText("未在直播").setUsable(false)
         }
 
         return MessageWrapper().addText(
             "直播间助手 > ${pushUser.userName} 正在直播!" +
-                    "\n直播间标题: ${data.title}" +
-                    "\n开播时间: ${data.liveTime}" +
-                    "\n传送门: ${data.getRoomURL()}",
-        ).addPictureByURL(data.keyFrameImageUrl)
+                    "\n直播间标题: ${liveRoomInfo.roomTitle}" +
+                    "\n开播时间: ${liveRoomInfo.liveTime}" +
+                    "\n传送门: https://live.bilibili.com/${liveRoomInfo.roomId}",
+        ).addPictureByURL(liveRoomInfo.cover?.let(::buildImagePreview))
     }
 
     override fun contentEquals(other: PushContext): Boolean {
         if (other !is BiliBiliLiveContext) return false
 
-        return liveRoomInfo.data.getStatus() == other.liveRoomInfo.data.getStatus()
-                && (!liveRoomInfo.data.isLiveTimeInvalid() && liveRoomInfo.data.parseLiveTime() == other.liveRoomInfo.data.parseLiveTime())
+        return liveRoomInfo.liveStatus == other.liveRoomInfo.liveStatus
+                && (liveRoomInfo.liveTime?.isLiveTimeInvalid() == false && liveRoomInfo.liveTime.parseLiveTime() == other.liveRoomInfo.liveTime?.parseLiveTime())
     }
 }
+
+@Serializable
+data class SimpleLiveRoomData(
+    val roomId: Int,
+    val roomTitle: String?,
+    val liveTime: String?,
+    val liveStatus: LiveStatus,
+    val cover: String?
+)

@@ -22,43 +22,41 @@ import io.github.starwishsama.comet.objects.enums.UserLevel
 import io.github.starwishsama.comet.sessions.Session
 import io.github.starwishsama.comet.sessions.SessionHandler
 import io.github.starwishsama.comet.sessions.SessionTarget
-import io.github.starwishsama.comet.utils.CometUtil.toChain
+import io.github.starwishsama.comet.utils.CometUtil.toMessageChain
 import io.github.starwishsama.comet.utils.network.PictureSearchUtil
 import net.mamoe.mirai.event.events.MessageEvent
 import net.mamoe.mirai.message.data.Image
 import net.mamoe.mirai.message.data.Image.Key.queryUrl
 import net.mamoe.mirai.message.data.MessageChain
-import net.mamoe.mirai.utils.MiraiExperimentalApi
 
 object PictureSearchCommand : ChatCommand, ConversationCommand {
-    @OptIn(MiraiExperimentalApi::class)
     override suspend fun execute(event: MessageEvent, args: List<String>, user: CometUser): MessageChain {
         if (args.isEmpty()) {
             val imageToSearch = event.message[Image]
 
             if (imageToSearch == null) {
                 if (!SessionHandler.hasSessionByID(event.sender.id, this::class.java)) {
-                    SessionHandler.insertSession(Session(SessionTarget(privateId = event.sender.id), this, true))
+                    SessionHandler.insertSession(Session(SessionTarget(targetId = event.sender.id), this, true))
                 }
 
-                return "请发送需要搜索的图片".toChain()
+                return "请发送需要搜索的图片".toMessageChain()
             }
 
-            return handlePicSearch(imageToSearch.queryUrl()).toChain()
+            return handlePicSearch(imageToSearch.queryUrl()).toMessageChain()
         } else if (args[0].contentEquals("source")) {
             if (args.size > 1) {
                 return try {
                     val api = PicSearchApiType.valueOf(args[1].uppercase())
                     CometVariables.cfg.pictureSearchApi = api
-                    toChain("已切换识图 API 为 ${api.name}", true)
+                    toMessageChain("已切换识图 API 为 ${api.name}", true)
                 } catch (ignored: IllegalArgumentException) {
-                    return getAllApi().toChain()
+                    return getAllApi().toMessageChain()
                 }
             } else {
-                return getAllApi().toChain()
+                return getAllApi().toMessageChain()
             }
         } else {
-            return getHelp().toChain()
+            return getHelp().toMessageChain()
         }
     }
 
@@ -75,7 +73,6 @@ object PictureSearchCommand : ChatCommand, ConversationCommand {
         /ytst source [API名称] 修改搜图源
     """.trimIndent()
 
-    @OptIn(MiraiExperimentalApi::class)
     override suspend fun handle(event: MessageEvent, user: CometUser, session: Session) {
         SessionHandler.removeSession(session)
         val image = event.message[Image]
@@ -96,23 +93,28 @@ object PictureSearchCommand : ChatCommand, ConversationCommand {
                     return "SauceNao 搜索没有配置, 请联系管理员."
                 }
 
-                val result = PictureSearchUtil.sauceNaoSearch(url)
-                return when {
-                    result.similarity >= defaultSimilarity -> {
-                        "相似度:${result.similarity}%\n原图链接:${result.originalUrl}\n"
+                return runCatching<String> {
+                    val result = PictureSearchUtil.sauceNaoSearch(url)
+                    return when {
+                        result.similarity >= defaultSimilarity -> {
+                            "相似度:${result.similarity}%\n原图链接:${result.originalUrl}\n"
+                        }
+                        result.similarity == -1.0 -> {
+                            "在识图时发生了问题, 请联系管理员"
+                        }
+                        else -> {
+                            "相似度过低 (${result.similarity}%), 请尝试更换图片重试"
+                        }
                     }
-                    result.similarity == -1.0 -> {
-                        "在识图时发生了问题, 请联系管理员"
-                    }
-                    else -> {
-                        "相似度过低 (${result.similarity}%), 请尝试更换图片重试"
-                    }
-                }
+                }.onFailure {
+                    CometVariables.daemonLogger.warning("在 SauceNao 识图时发生了问题", it)
+                    return "在识图时发生了问题, 请联系管理员"
+                }.getOrDefault("在识图时发生了问题, 请联系管理员")
             }
             PicSearchApiType.ASCII2D -> {
                 val result = PictureSearchUtil.ascii2dSearch(url)
                 return if (result.isNotEmpty()) {
-                    "已找到可能相似的图片\n图片来源${result.originalUrl}\n打开 ascii2d 页面查看更多\n${result.openUrl}"
+                    "已找到可能相似的图片\n打开 ascii2d 页面查看更多\n${result}"
                 } else {
                     "找不到相似的图片"
                 }

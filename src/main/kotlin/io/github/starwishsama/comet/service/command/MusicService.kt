@@ -13,7 +13,7 @@ package io.github.starwishsama.comet.service.command
 import io.github.starwishsama.comet.CometVariables
 import io.github.starwishsama.comet.api.thirdparty.music.ThirdPartyMusicApi
 import io.github.starwishsama.comet.objects.enums.MusicApiType
-import io.github.starwishsama.comet.utils.CometUtil.toChain
+import io.github.starwishsama.comet.utils.CometUtil.toMessageChain
 import net.mamoe.mirai.contact.Contact
 import net.mamoe.mirai.message.data.MessageChain
 import net.mamoe.mirai.message.data.MusicKind
@@ -23,7 +23,7 @@ object MusicService {
 
     fun setTextMode(): MessageChain {
         plainText = !plainText
-        return "纯文字模式: $plainText".toChain()
+        return "纯文字模式: $plainText".toMessageChain()
     }
 
     fun setMusicApi(args: List<String>): MessageChain {
@@ -33,54 +33,65 @@ object MusicService {
                 "NETEASE", "网易", "WY" -> CometVariables.cfg.musicApi = MusicApiType.NETEASE
             }
 
-            toChain("音乐API已修改为 ${CometVariables.cfg.musicApi}")
+            toMessageChain("音乐API已修改为 ${CometVariables.cfg.musicApi}")
         } else {
-            "/music api [API名称] (QQ/WY)".toChain()
+            "/music api [API名称] (QQ/WY)".toMessageChain()
         }
     }
 
     fun handleMusicSearch(name: String, subject: Contact?): MessageChain {
-        return when (CometVariables.cfg.musicApi) {
-            MusicApiType.NETEASE -> handleNetEaseMusic(name, subject)
-            MusicApiType.QQ -> handleQQMusic(name, subject)
-        }
+        return kotlin.runCatching {
+            when (CometVariables.cfg.musicApi) {
+                MusicApiType.NETEASE -> handleNetEaseMusic(name, subject)
+                MusicApiType.QQ -> handleQQMusic(name, subject)
+            }
+        }.onFailure {
+            CometVariables.daemonLogger.warning("点歌时出现了意外", it)
+            return "❌ 点歌系统开小差了, 稍后再试试吧".toMessageChain()
+        }.onSuccess {
+            return it
+        }.getOrDefault("❌ 点歌系统开小差了, 稍后再试试吧".toMessageChain())
     }
 
     fun handleNetEaseMusic(name: String, subject: Contact?): MessageChain {
-        try {
+        return kotlin.runCatching {
             val result = ThirdPartyMusicApi.searchNetEaseMusic(name)
 
             if (result.isEmpty()) {
-                return "❌ 找不到你想搜索的音乐".toChain()
+                return "❌ 找不到你想搜索的音乐".toMessageChain()
             }
 
-            return if (plainText) {
+            if (plainText) {
                 result[0].toMessageWrapper().toMessageChain(subject)
             } else {
                 result[0].toMusicShare(MusicKind.NeteaseCloudMusic)
             }
-        } catch (e: Exception) {
-            CometVariables.daemonLogger.warning("点歌时出现了意外", e)
-            return "❌ 点歌系统开小差了, 稍后再试试吧".toChain()
-        }
+        }.onFailure {
+            CometVariables.daemonLogger.warning("点歌时出现了意外", it)
+            return "❌ 点歌系统开小差了, 稍后再试试吧".toMessageChain()
+        }.onSuccess {
+            return it
+        }.getOrDefault("❌ 点歌系统开小差了, 稍后再试试吧".toMessageChain())
     }
 
     fun handleQQMusic(name: String, subject: Contact?): MessageChain {
-        try {
+        return kotlin.runCatching {
             val result = ThirdPartyMusicApi.searchQQMusic(name)
 
             if (result.isEmpty()) {
-                return "❌ 找不到你想搜索的音乐".toChain()
+                return "❌ 找不到你想搜索的音乐".toMessageChain()
             }
 
-            return if (plainText) {
+            if (plainText) {
                 result[0].toMessageWrapper().toMessageChain(subject)
             } else {
                 result[0].toMusicShare(MusicKind.QQMusic)
             }
-        } catch (e: Exception) {
-            CometVariables.daemonLogger.warning("点歌时出现了意外", e)
-            return "❌ 点歌系统开小差了, 稍后再试试吧".toChain()
-        }
+        }.onFailure {
+            CometVariables.daemonLogger.warning("点歌时出现了意外", it)
+            return "❌ 点歌系统开小差了, 稍后再试试吧".toMessageChain()
+        }.onSuccess {
+            return it
+        }.getOrDefault("❌ 点歌系统开小差了, 稍后再试试吧".toMessageChain())
     }
 }

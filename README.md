@@ -19,28 +19,29 @@ Demo/交流群：725656262
 
 ## 🎉 它能干什么?
 
-* 以图搜图 (支持 ascii2d/SauceNao)
-* 彩虹六号战绩查询
-* 打卡
-* 签到
-* 哔哩哔哩UP主信息/动态查询
-* 点歌 (卡片/纯文本样式)
-* 事件概率占卜
-* 明日方舟抽卡模拟器
-* 去你大爷的小程序 (将小程序转换为文本)
-    - 哔哩哔哩
-* 单推小助手
-    - 支持订阅哔哩哔哩用户动态/开播提醒
-    - 支持订阅推特用户最新消息
-* rCon 功能, 支持连接到有 rCon 功能的游戏
-* 查询推特用户信息/推文
-* 自动推送最新推文到指定群聊
-* 禁言/踢出群员
-* 群抽奖
-* Github WebHook 推送
-* 能不能好好说话
-* 小鸡词典
-* 还在开发中...
+- 以图搜图 (支持 ascii2d/SauceNao)
+- 彩虹六号战绩查询
+- 签到
+- 哔哩哔哩UP主信息/动态查询
+- 点歌 (卡片/纯文本样式)
+- 事件概率占卜
+- 明日方舟抽卡模拟器
+- 原神抽卡模拟器 (全图像输出，背包管理，神铸定轨，自定义卡池概率 / 物品)
+  - 由于原神抽卡图像素材过大，请手动下载 [SDLMoe/GenshinGachaSimulatorImageResources](https://github.com/SDLMoe/GenshinGachaSimulatorImageResources) 并放置于 Comet 启动根目录 `img` 文件夹下
+- 去你大爷的小程序 (将小程序转换为文本)
+  - 哔哩哔哩
+- 单推小助手
+  - 支持订阅哔哩哔哩用户动态/开播提醒
+  - 支持订阅推特用户最新消息
+- rCon 功能, 支持连接到有 rCon 功能的游戏
+- 查询推特用户信息/推文
+- 自动推送最新推文到指定群聊
+- 禁言/踢出群员
+- 群抽奖
+- Github WebHook 推送
+- 能不能好好说话
+- 小鸡词典
+- 还在开发中...
 
 ## ☑ To-Do 列表
 
@@ -52,19 +53,19 @@ Demo/交流群：725656262
 
 - 实验性的支持, 可能存在无法使用的恶性 Bug, 欢迎反馈问题
 
-~~你可以在[这里](https://github.com/StarWishsama/Comet-Bot/tree/mirai-console)找到插件版本的 Comet, 可以如下编译
+~~你可以在[这里](https://github.com/StarWishsama/Comet-Bot/tree/mirai-console)找到插件版本的 Comet, 可以如下编译~~
 
-或是从 [Github Actions](https://github.com/StarWishsama/Comet-Bot/actions?query=branch%3Amirai-console) 中下载~~
+~~或是从 [Github Actions](https://github.com/StarWishsama/Comet-Bot/actions?query=branch%3Amirai-console) 中下载~~
 
 自 0.6.3 起, Releases 中已提供插件版下载
 
 ### 自编译
 
-- 注意: 请使用 JDK 11 或更高版本打包, **推荐**使用 JDK 11+
+- 注意: 请使用 JDK 11 或更高版本打包, **推荐**使用 JDK 17
 
 1. 编译
 
-* Clone 或者下载这个项目.
+- Clone 或者下载这个项目.
 
  ```bash
  git clone https://github.com/StarWishsama/Comet-Bot.git
@@ -121,4 +122,8 @@ Demo/交流群：725656262
 
 特别感谢 [Kengxxiao](https://github.com/Kengxxiao/) 的项目 [ArknightsGameData](https://github.com/Kengxxiao/ArknightsGameData)
 提供明日方舟游戏数据资源
+
+特别感谢 [SDLMoe](https://github.com/SDLMoe) 的项目 [Yabapi](https://github.com/SDLMoe/Yabapi)
+提供可靠的哔哩哔哩 API 库
+![](https://github.com/SDLMoe/Yabapi/blob/kotlin-mt/imgs/yabapi-banner.png?raw=true)
 

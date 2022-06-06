@@ -17,12 +17,27 @@ import io.github.starwishsama.comet.exceptions.ApiException
 import io.github.starwishsama.comet.service.RetrofitLogger
 import io.github.starwishsama.comet.utils.StringUtil.containsEtc
 import io.github.starwishsama.comet.utils.TaskUtil
-import okhttp3.*
+import okhttp3.Call
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.Response
+import okhttp3.ResponseBody
 import retrofit2.HttpException
-import java.io.*
-import java.net.*
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.InputStream
+import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.Socket
+import java.net.URL
 import java.time.Duration
 import java.time.LocalDateTime
+import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
 
 fun Response.isType(typeName: String): Boolean = headers["content-type"]?.contains(typeName) == true
@@ -113,7 +128,7 @@ object NetUtil {
      */
     fun executeHttpRequest(
         url: String,
-        timeout: Long = 2,
+        timeout: Long = 10,
         proxyUrl: String = cfg.proxyUrl,
         proxyPort: Int = cfg.proxyPort,
         call: Request.Builder.() -> Request.Builder = {
@@ -204,6 +219,10 @@ object NetUtil {
     }
 
     fun isTimeout(t: Throwable): Boolean {
+        if (t is CancellationException) {
+            return false
+        }
+
         val msg = t.message?.lowercase() ?: return false
         return msg.containsEtc(true, "time", "out") || t.javaClass.simpleName.lowercase().contains("timeout")
     }

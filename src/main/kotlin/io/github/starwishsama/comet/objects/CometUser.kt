@@ -27,6 +27,7 @@ data class CometUser(
     var r6sAccount: String = "",
     var level: UserLevel = UserLevel.USER,
     var triggerCommandTime: Long = -1,
+    var genshinGachaPool: Int = 0,
     private val permissions: MutableSet<CometPermission> = mutableSetOf(),
 ) {
     fun addPoint(point: Number) {
@@ -75,12 +76,20 @@ data class CometUser(
         return level == UserLevel.OWNER
     }
 
+    fun addPermission(permission: CometPermission) {
+        permissions.add(permission)
+    }
+
     fun addPermission(nodeName: String) {
-        permissions.add(PermissionManager.getPermission(nodeName) ?: return)
+        addPermission(PermissionManager.getPermission(nodeName) ?: return)
+    }
+
+    fun removePermission(permission: CometPermission) {
+        permissions.remove(permission)
     }
 
     fun removePermission(nodeName: String) {
-        permissions.remove(PermissionManager.getPermission(nodeName) ?: return)
+        removePermission(PermissionManager.getPermission(nodeName) ?: return)
     }
 
     /**
@@ -105,17 +114,15 @@ data class CometUser(
      *
      * @return 是否处于冷却状态
      */
-    fun checkCoolDown(silent: Boolean = false, coolDown: Int = CometVariables.cfg.coolDownTime): Boolean {
+    fun isNoCoolDown(silent: Boolean = false, coolDown: Int = CometVariables.cfg.coolDownTime): Boolean {
         val currentTime = System.currentTimeMillis()
+        val period = currentTime - triggerCommandTime
 
-        return if (triggerCommandTime < 0) {
-            if (!silent) triggerCommandTime = currentTime
-            true
-        } else {
-            val hasCoolDown = currentTime - triggerCommandTime >= coolDown * 1000
-            if (!silent) triggerCommandTime = currentTime
-            hasCoolDown
+        if (!silent) {
+            triggerCommandTime = currentTime
         }
+
+        return triggerCommandTime < 0 || period >= coolDown * 1000
     }
 
     companion object {
@@ -128,6 +135,10 @@ data class CometUser(
 
         fun getUser(id: Long): CometUser? {
             return CometVariables.cometUsers[id]
+        }
+
+        fun getUser(uuid: UUID): CometUser? {
+            return CometVariables.cometUsers.entries.find { it.value.uuid == uuid }?.value
         }
 
         fun getUserOrRegister(qq: Long): CometUser = getUser(qq) ?: quickRegister(qq)

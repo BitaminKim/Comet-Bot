@@ -10,29 +10,33 @@
 
 package io.github.starwishsama.comet.commands.chats
 
-import cn.hutool.core.util.RandomUtil
+import io.github.starwishsama.comet.CometVariables.random
 import io.github.starwishsama.comet.api.command.CommandProps
 import io.github.starwishsama.comet.api.command.interfaces.ChatCommand
 import io.github.starwishsama.comet.objects.CometUser
 import io.github.starwishsama.comet.objects.RandomResult
 import io.github.starwishsama.comet.objects.enums.UserLevel
 import io.github.starwishsama.comet.utils.CometUtil.getRestString
-import io.github.starwishsama.comet.utils.CometUtil.toChain
+import io.github.starwishsama.comet.utils.CometUtil.toMessageChain
 import io.github.starwishsama.comet.utils.StringUtil.convertToChain
 import net.mamoe.mirai.event.events.MessageEvent
 import net.mamoe.mirai.message.data.MessageChain
 
-
 object DivineCommand : ChatCommand {
+    private val emojiPattern = Regex("[\uD83C-\uDBFF\uDC00-\uDFFF]+")
+
     override suspend fun execute(event: MessageEvent, args: List<String>, user: CometUser): MessageChain {
         return if (args.isNotEmpty()) {
             val randomEventName = args.getRestString(0)
             if (randomEventName.isNotBlank() && randomEventName.length < 30) {
-                val result = RandomResult(-1000, RandomUtil.randomDouble(0.0, 1.0), randomEventName)
+                if (!emojiPattern.containsMatchIn(randomEventName)) {
+                    "不允许使用 emoji 字符".toMessageChain()
+                }
+                val result = RandomResult(-1000, random.nextDouble(0.0, 1.0), randomEventName)
 
                 RandomResult.getChance(result).convertToChain()
             } else {
-                toChain("请检查需要占卜的字符是否超过上限或为空!")
+                toMessageChain("请检查需要占卜的字符是否超过上限或为空!")
             }
         } else {
             return getHelp().convertToChain()

@@ -12,12 +12,10 @@ package io.github.starwishsama.comet.utils
 
 import cn.hutool.core.io.file.FileReader
 import cn.hutool.core.io.file.FileWriter
-import cn.hutool.core.net.URLDecoder
 import cn.hutool.crypto.SecureUtil
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import io.github.starwishsama.comet.BuildConfig
-import io.github.starwishsama.comet.Comet
 import io.github.starwishsama.comet.CometApplication
 import io.github.starwishsama.comet.CometVariables
 import io.github.starwishsama.comet.CometVariables.daemonLogger
@@ -33,11 +31,9 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import java.util.jar.JarEntry
 import java.util.jar.JarFile
-import kotlin.time.ExperimentalTime
 
 @Synchronized
 fun File.writeClassToJson(context: Any, mapper: ObjectMapper = CometVariables.mapper) {
-    daemonLogger.debug("正在尝试写入文件: ${this.absolutePath}")
     FileWriter.create(this).getWriter(false).use {
         mapper.writeValue(it, context)
     }
@@ -50,8 +46,6 @@ fun File.writeString(
     isAppend: Boolean = false,
     newIfNotExists: Boolean = true
 ) {
-    daemonLogger.debug("正在尝试写入文件: ${this.absolutePath}")
-
     if (newIfNotExists) {
         createNewFile()
     }
@@ -71,6 +65,14 @@ fun File.getContext(): String {
 @Suppress("unused")
 fun File.getMD5(): String {
     return SecureUtil.md5(this)
+}
+
+inline fun File.createNewFileIfNotExists(extraAction: (File) -> Unit = {}) {
+    if (!this.exists()) {
+        this.parentFile.mkdirs()
+        this.createNewFile()
+        extraAction.invoke(this)
+    }
 }
 
 /**
@@ -136,9 +138,10 @@ fun File.createBackupFile() {
 }
 
 object FileUtil {
-    private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss")
+    private val standardDateTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss")
 
-    fun getChildFolder(childName: String): File = CometVariables.filePath.getChildFolder(childName)
+    fun getChildFolder(childName: String, createIfNotExists: Boolean = true): File =
+        CometVariables.filePath.getChildFolder(childName, createIfNotExists)
 
     fun getCacheFolder(): File = getChildFolder("cache")
 
@@ -153,7 +156,7 @@ object FileUtil {
         content: String,
         message: String
     ) {
-        val fileName = "$type-${dateFormatter.format(LocalDateTime.now())}.txt"
+        val fileName = "$type-${standardDateTimeFormatter.format(LocalDateTime.now())}.txt"
         val location = File(getErrorReportFolder(), fileName)
         if (location.exists()) return
 
@@ -164,6 +167,7 @@ object FileUtil {
         location.writeString(report)
         daemonLogger.warning("$reason, 错误报告已生成! 保存在 ${location.path}")
         daemonLogger.warning("你可以将其反馈到 https://github.com/StarWishsama/Comet-Bot/issues")
+        daemonLogger.warning("以下是错误堆栈: ", t)
     }
 
     /**
@@ -174,7 +178,7 @@ object FileUtil {
     fun getLogLocation(customPrefix: String = "log"): File {
         val initTime = LocalDateTime.now()
         val parent = getChildFolder("logs")
-        return File(parent, "$customPrefix-${dateFormatter.format(initTime)}.log").also {
+        return File(parent, "$customPrefix-${standardDateTimeFormatter.format(initTime)}.log").also {
             if (!it.exists()) {
                 it.createNewFile()
             }
@@ -186,15 +190,7 @@ object FileUtil {
      */
     @Suppress("SpellCheckingInspection")
     fun getJarLocation(): File {
-        var path: String = Comet::class.java.protectionDomain.codeSource.location.path
-        if (System.getProperty("os.name").lowercase().contains("dows")) {
-            path = path.substring(1)
-        }
-        if (path.contains("jar")) {
-            path = path.substring(0, path.lastIndexOf("/"))
-            return File(URLDecoder.decode(path, Charsets.UTF_8))
-        }
-        return File(URLDecoder.decode(path.replace("target/classes/", ""), Charsets.UTF_8))
+        return File(System.getProperty("user.dir"))
     }
 
     /**
@@ -265,7 +261,6 @@ object FileUtil {
     /**
      * 初始化资源文件
      */
-    @OptIn(ExperimentalTime::class)
     fun initResourceFile() {
         val startTime = LocalDateTime.now()
         try {
@@ -276,11 +271,9 @@ object FileUtil {
             if (jarFile.isFile) {
                 copyFromJar(jarFile, resourcePath)
             } else { // Run with IDE
-                val url: URL = ClassLoader.getSystemResource("/$resourcePath")
+                val url: URL = ClassLoader.getSystemResource(resourcePath)
                 val apps = File(url.toURI())
-                for (app in apps.listFiles() ?: return) {
-                    copyFolder(app, getResourceFolder())
-                }
+                copyFolder(apps, getResourceFolder())
             }
         } catch (e: Exception) {
             daemonLogger.info("加载资源文件失败, 部分需要资源的功能将无法使用")

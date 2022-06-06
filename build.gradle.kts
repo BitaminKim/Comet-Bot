@@ -12,14 +12,14 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 plugins {
-    kotlin("jvm") version "1.6.10"
-    kotlin("plugin.serialization") version "1.6.10"
-    id("com.github.johnrengelman.shadow") version "7.1.1"
+    kotlin("jvm") version Dependency.kotlinVersion
+    kotlin("plugin.serialization") version Dependency.kotlinVersion
+    id("com.github.johnrengelman.shadow") version "7.1.2"
     id("com.github.gmazzo.buildconfig") version "3.0.3"
 }
 
 group = "io.github.starwishsama.comet"
-version = "0.6.5" + getGitInfo()
+version = "0.6.7" + getGitInfo()
 
 tasks.jar {
     manifest {
@@ -32,33 +32,36 @@ repositories {
     mavenCentral()
     google()
     gradlePluginPortal()
-    maven(url = "https://maven.aliyun.com/nexus/content/repositories/central/")
-    maven(url = "https://jitpack.io")
-    maven(url = "https://oss.sonatype.org/content/repositories/snapshots/")
+    maven("https://maven.aliyun.com/nexus/content/repositories/central/")
+    maven("https://jitpack.io")
+    maven("https://oss.sonatype.org/content/repositories/snapshots/")
+    maven("https://s01.oss.sonatype.org/content/repositories/snapshots/")
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.3.2")
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.3.3")
 
-    implementation("net.mamoe:mirai-core-all:${Versions.miraiVersion}")
+    implementation("net.mamoe:mirai-core-all:${Dependency.miraiVersion}") {
+        exclude("org.jetbrains.kotlinx", "atomicfu-jvm")
+    }
 
-    implementation("cn.hutool:hutool-http:${Versions.hutoolVersion}")
-    implementation("cn.hutool:hutool-crypto:${Versions.hutoolVersion}")
+    implementation("cn.hutool:hutool-http:${Dependency.hutoolVersion}")
+    implementation("cn.hutool:hutool-crypto:${Dependency.hutoolVersion}")
+    implementation("cn.hutool:hutool-cron:${Dependency.hutoolVersion}")
 
     // yamlkt @ https://github.com/him188/yamlkt
-    implementation("net.mamoe.yamlkt:yamlkt:${Versions.yamlktVersion}")
+    implementation("net.mamoe.yamlkt:yamlkt:${Dependency.yamlktVersion}")
 
     // jackson @ https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-core
-    implementation("com.fasterxml.jackson.core:jackson-core:${Versions.jacksonVersion}")
-    implementation("com.fasterxml.jackson.core:jackson-databind:${Versions.jacksonVersion}")
-    implementation("com.fasterxml.jackson.core:jackson-annotations:${Versions.jacksonVersion}")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:${Versions.jacksonVersion}")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:${Versions.jacksonVersion}")
-    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${Versions.jacksonVersion}")
+    implementation("com.fasterxml.jackson.core:jackson-core:${Dependency.jacksonVersion}")
+    implementation("com.fasterxml.jackson.core:jackson-databind:${Dependency.jacksonVersion}")
+    implementation("com.fasterxml.jackson.core:jackson-annotations:${Dependency.jacksonVersion}")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:${Dependency.jacksonVersion}")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:${Dependency.jacksonVersion}")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${Dependency.jacksonVersion}")
 
     // CUrl
-    implementation("com.github.rockswang:java-curl:1.2.2.2")
+    implementation("com.github.rockswang:java-curl:1.2.2.190107")
 
     // jsoup HTML parser library @ https://jsoup.org/
     implementation("org.jsoup:jsoup:1.14.3")
@@ -74,12 +77,26 @@ dependencies {
     implementation("org.fusesource.jansi:jansi:2.4.0")
 
     // DNSJava used to srv lookup
-    implementation("dnsjava:dnsjava:3.4.3")
+    implementation("dnsjava:dnsjava:3.5.1")
 
-    implementation("io.ktor:ktor-server-core:${Versions.ktorVersion}")
-    implementation("io.ktor:ktor-server-netty:${Versions.ktorVersion}")
+    implementation("io.ktor:ktor-server-core:${Dependency.ktorVersion}")
+    implementation("io.ktor:ktor-server-netty:${Dependency.ktorVersion}")
 
     implementation("com.github.StarWishsama:rkon-core:master-SNAPSHOT")
+
+    implementation("moe.sdl.yabapi:yabapi-core-jvm:${Dependency.yabapiVersion}") {
+        exclude("org.jetbrains.kotlinx", "atomicfu-jvm")
+        exclude("org.jetbrains.kotlinx", "atomicfu")
+    }
+
+    // Fix yabapi
+    implementation("org.jetbrains.kotlinx:atomicfu:0.17.2")
+
+    testImplementation(kotlin("test"))
+}
+
+configurations.all {
+    resolutionStrategy.cacheChangingModulesFor(0, "minutes")
 }
 
 buildConfig {
@@ -92,26 +109,27 @@ buildConfig {
         "buildTime",
         "\"${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"))}\""
     )
-    buildConfigField("String", "miraiVersion", "\"${Versions.miraiVersion}\"")
+    buildConfigField("String", "miraiVersion", "\"${Dependency.miraiVersion}\"")
 }
 
 fun getGitInfo(): String {
     val commitHashCommand = "git rev-parse --short HEAD"
-    val commitHash = Runtime.getRuntime().exec(commitHashCommand).inputStream.bufferedReader().readLine()
+    val commitHash =
+        Runtime.getRuntime().exec(commitHashCommand).inputStream.bufferedReader().readLine() ?: "UnknownCommit"
 
     val branchCommand = "git rev-parse --abbrev-ref HEAD"
-    var branch = Runtime.getRuntime().exec(branchCommand).inputStream.bufferedReader().readLine()
-
-    if (branch.isEmpty()) {
-        branch = "UnknownBranch"
-    }
+    val branch = Runtime.getRuntime().exec(branchCommand).inputStream.bufferedReader().readLine() ?: "UnknownBranch"
 
     return "-$branch-$commitHash"
 }
 
+tasks.test {
+    useJUnitPlatform()
+}
+
 tasks.shadowJar {
-    val generateBuildConfig by tasks
-    dependsOn(generateBuildConfig)
+    dependsOn(tasks.generateBuildConfig)
+
     isZip64 = true
     exclude("META-INF/*.txt")
     exclude("META-INF/*.md")
@@ -119,12 +137,11 @@ tasks.shadowJar {
     exclude("META-INF/LICENSE")
     exclude("META-INF/NOTICE")
 
-    println("Comet >> Welcome to Comet!")
-    println("Comet >> Using Java " + System.getProperty("java.version") + " to build.")
-    println("Comet >> Now building Comet $project.version...")
+    println("Comet >> Using Java ${System.getProperty("java.version")} to build.")
+    println("Comet >> Now building Comet ${project.version}...")
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
     kotlinOptions.jvmTarget = "11"
-    kotlinOptions.freeCompilerArgs = listOf("-Xopt-in=kotlin.RequiresOptIn")
+    kotlinOptions.freeCompilerArgs = listOf("-Xopt-in=kotlin.RequiresOptIn", "-XXLanguage:+UnitConversion")
 }

@@ -10,11 +10,12 @@
 
 package io.github.starwishsama.comet.service.command
 
-import cn.hutool.core.util.RandomUtil
+import cn.hutool.core.util.NumberUtil
 import io.github.starwishsama.comet.CometVariables
+import io.github.starwishsama.comet.CometVariables.random
 import io.github.starwishsama.comet.objects.CometUser
 import io.github.starwishsama.comet.objects.tasks.HitokotoUpdater
-import io.github.starwishsama.comet.utils.CometUtil.toChain
+import io.github.starwishsama.comet.utils.CometUtil.toMessageChain
 import io.github.starwishsama.comet.utils.NumberUtil.fixDisplay
 import net.mamoe.mirai.contact.nameCardOrNick
 import net.mamoe.mirai.event.events.MessageEvent
@@ -32,7 +33,7 @@ import kotlin.math.min
 object CheckInService {
     fun handleCheckIn(event: MessageEvent, user: CometUser): MessageChain {
         return if (user.isChecked()) {
-            "你今天已经签到过了! 输入 /cx 可查询硬币详情".toChain()
+            "你今天已经签到过了! 输入 /cx 可查询硬币详情".toMessageChain()
         } else {
             doCheckIn(event, user)
         }
@@ -77,10 +78,10 @@ object CheckInService {
 
             append("目前硬币 > ${user.coin.fixDisplay()}\n")
 
-            append("今日一言 > ${HitokotoUpdater.getHitokoto(false)}\n")
+            append("今日一言 > ${HitokotoUpdater.getHitokoto()}\n")
         }
 
-        return checkInResult.toChain()
+        return checkInResult.toMessageChain()
     }
 
     /**
@@ -102,11 +103,15 @@ object CheckInService {
         user.checkInDateTime = currentTime
 
         // 使用随机数工具生成基础硬币
-        val basePoint = RandomUtil.randomDouble(0.0, 10.0, 1, RoundingMode.HALF_DOWN)
+        val basePoint = NumberUtil.round(random.nextDouble(0.0, 10.0), 1, RoundingMode.HALF_DOWN).toDouble()
 
         // 只取小数点后一位，将最大奖励点数限制到 3 倍
         val awardProp =
-            min(1.5, (RandomUtil.randomDouble(0.0, 0.2, 1, RoundingMode.HALF_DOWN) * (user.checkInCount - 1)))
+            min(
+                1.5,
+                NumberUtil.round((random.nextDouble(0.0, 0.2) * (user.checkInCount - 1)), 1, RoundingMode.HALF_DOWN)
+                    .toDouble()
+            )
 
         // 连续签到的奖励硬币
         val awardPoint = if (basePoint < 0) {
@@ -155,10 +160,10 @@ object CheckInService {
     }
 
     private fun hasRandomEvent(): Double {
-        val randomEvent = RandomUtil.randomDouble(0.0, 1.0, 1, RoundingMode.HALF_DOWN)
+        val randomEvent = random.nextDouble(0.0, 1.0)
 
-        return if (randomEvent in 0.4999..0.5001) {
-            RandomUtil.randomDouble(10.0, 25.0, 1, RoundingMode.HALF_DOWN)
+        return if (randomEvent in 0.49999..0.50001) {
+            random.nextDouble(10.0, 25.0)
         } else {
             0.0
         }

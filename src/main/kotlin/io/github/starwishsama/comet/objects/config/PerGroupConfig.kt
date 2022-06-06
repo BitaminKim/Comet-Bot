@@ -77,7 +77,7 @@ data class PerGroupConfig(
     var newComerWelcome: Boolean = false,
 
     @JsonProperty("newcomer_welcome_text")
-    var newComerWelcomeText: MessageWrapper = MessageWrapper().setUsable(true),
+    var newComerWelcomeText: MessageWrapper = MessageWrapper(),
 
     @JsonProperty("auto_accept_condition")
     var autoAcceptCondition: String = "",
@@ -95,7 +95,10 @@ data class PerGroupConfig(
     var oldFileMatchPattern: String = "",
 
     @JsonProperty("disabled_commands")
-    val disabledCommands: MutableSet<String> = mutableSetOf()
+    val disabledCommands: MutableSet<String> = mutableSetOf(),
+
+    @JsonProperty("gaokao_push_function")
+    var gaokaoPushEnabled: Boolean = false,
 ) {
 
     fun addHelper(id: Long): Boolean {

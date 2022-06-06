@@ -16,14 +16,13 @@ import io.github.starwishsama.comet.api.command.interfaces.ChatCommand
 import io.github.starwishsama.comet.i18n.LocalizationManager
 import io.github.starwishsama.comet.objects.CometUser
 import io.github.starwishsama.comet.sessions.SessionHandler
-import io.github.starwishsama.comet.utils.CometUtil.toChain
+import io.github.starwishsama.comet.utils.CometUtil.toMessageChain
 import io.github.starwishsama.comet.utils.NumberUtil.fixDisplay
 import io.github.starwishsama.comet.utils.StringUtil.convertToChain
 import io.github.starwishsama.comet.utils.StringUtil.getLastingTimeAsString
 import io.github.starwishsama.comet.utils.StringUtil.limitStringSize
-import io.github.starwishsama.comet.utils.TaskUtil
-import io.github.starwishsama.comet.utils.doFilter
 import io.github.starwishsama.comet.utils.network.NetUtil
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.contact.isBotMuted
@@ -46,32 +45,33 @@ object MessageHandler {
     fun Bot.attachHandler() {
         this.eventChannel.subscribeMessages {
             always {
+                // https://github.com/mamoe/mirai/issues/1850
+                if (sender.id == bot.id) {
+                    return@always
+                }
+
                 val executedTime = LocalDateTime.now()
                 if (sender.id != 80000000L) {
                     if (this is GroupMessageEvent && group.isBotMuted) return@always
 
-                    TaskUtil.dispatcher.run {
-                        val result = dispatchCommand(this@always)
+                    val result = dispatchCommand(this@always)
 
-                        try {
-                            val filtered = result.msg.doFilter()
+                    try {
+                        if (result.status.isOk() && !result.msg.isContentEmpty()) {
+                            val receipt = this@always.subject.sendMessage(result.msg)
 
-                            if (result.status.isOk() && !filtered.isContentEmpty()) {
-                                val receipt = this@always.subject.sendMessage(filtered)
-
-                                if (result.cmd is CallbackCommand) {
-                                    result.cmd.handleReceipt(receipt)
-                                }
+                            if (result.cmd is CallbackCommand) {
+                                result.cmd.handleReceipt(receipt)
                             }
-                        } catch (e: IllegalArgumentException) {
-                            CometVariables.logger.warning("正在尝试发送空消息, 执行的命令为 $result")
                         }
+                    } catch (e: IllegalArgumentException) {
+                        CometVariables.logger.warning("正在尝试发送空消息, 执行的命令为 $result")
+                    }
 
-                        if (result.status.isOk()) {
-                            CometVariables.logger.debug(
-                                "[命令] 命令执行耗时 ${executedTime.getLastingTimeAsString(msMode = true)}, 执行结果: ${result.status.name}"
-                            )
-                        }
+                    if (result.status.isOk()) {
+                        CometVariables.logger.debug(
+                            "[命令] 命令执行耗时 ${executedTime.getLastingTimeAsString(msMode = true)}, 执行结果: ${result.status.name}"
+                        )
                     }
                 }
             }
@@ -120,7 +120,7 @@ object MessageHandler {
                 if (event is GroupMessageEvent && cmd.props.isDisabledCommand(event.group.id)
                 ) {
                     return if (useStatus) {
-                        ExecutedResult(toChain("该命令已被管理员禁用"), cmd, CommandStatus.Disabled())
+                        ExecutedResult(toMessageChain("该命令已被管理员禁用"), cmd, CommandStatus.Disabled())
                     } else {
                         ExecutedResult(EmptyMessageChain, cmd, CommandStatus.Disabled())
                     }
@@ -131,7 +131,7 @@ object MessageHandler {
                         val response = LocalizationManager.getLocalizationText("message.no-enough-point")
                             .replace("%point%", user.coin.fixDisplay())
                             .replace("%cost%", cmd.props.cost.fixDisplay())
-                        ExecutedResult(response.toChain(), cmd, CommandStatus.ValidateFailed())
+                        ExecutedResult(response.toMessageChain(), cmd, CommandStatus.ValidateFailed())
                     } else {
                         ExecutedResult(EmptyMessageChain, cmd, CommandStatus.ValidateFailed())
                     }
@@ -157,7 +157,7 @@ object MessageHandler {
                             cmd.execute(event, splitMessage, user)
                         } else {
                             status = CommandStatus.NoPermission()
-                            LocalizationManager.getLocalizationText("message.no-permission").toChain()
+                            LocalizationManager.getLocalizationText("message.no-permission").toMessageChain()
                         }
 
                     return ExecutedResult(result, cmd, status)
@@ -167,17 +167,21 @@ object MessageHandler {
             } catch (e: Exception) {
                 return if (NetUtil.isTimeout(e)) {
                     CometVariables.logger.warning("执行网络操作失败: ", e)
-                    ExecutedResult("Bot > 在执行网络操作时连接超时: ${e.message ?: ""}".convertToChain(), cmd)
+                    ExecutedResult("Bot > 在执行网络操作时连接超时: ${e.message?.limitStringSize(100) ?: ""}".convertToChain(), cmd)
                 } else {
+                    if (e is CancellationException) {
+                        throw e
+                    }
+
                     CometVariables.logger.warning("[命令] 在试图执行命令时发生了一个错误, 原文: ${message}, 发送者: $senderId", e)
                     if (user.isBotOwner()) {
                         ExecutedResult(
-                            toChain(
+                            toMessageChain(
                                 "在试图执行命令时发生了一个错误\n简易报错信息 :\n${e.javaClass.name}: ${e.message?.limitStringSize(30)}"
                             ), cmd
                         )
                     } else {
-                        ExecutedResult(toChain("在试图执行命令时发生了一个错误, 请联系管理员"), cmd)
+                        ExecutedResult(toMessageChain("在试图执行命令时发生了一个错误, 请联系管理员"), cmd)
                     }
                 }
             }
@@ -200,7 +204,11 @@ object MessageHandler {
             }
         } catch (t: Throwable) {
             CometVariables.logger.warning("[命令] 在试图执行命令时发生了一个错误, 原文: $content", t)
-            return ""
+            return "".also {
+                if (t is CancellationException) {
+                    throw t
+                }
+            }
         }
         return ""
     }
@@ -222,7 +230,7 @@ object MessageHandler {
 
         return when (props.consumerType) {
             CommandExecuteConsumerType.COOLDOWN -> {
-                user.checkCoolDown(coolDown = props.cost.toInt())
+                user.isNoCoolDown(coolDown = props.cost.toInt())
             }
             CommandExecuteConsumerType.COIN -> {
                 if (user.coin >= props.cost) {

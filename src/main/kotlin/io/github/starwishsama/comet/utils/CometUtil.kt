@@ -23,7 +23,6 @@ import io.github.starwishsama.comet.utils.StringUtil.isNumeric
 import io.github.starwishsama.comet.utils.StringUtil.toFriendly
 import kotlinx.coroutines.runBlocking
 import net.mamoe.mirai.contact.Contact
-import net.mamoe.mirai.event.events.MessageEvent
 import net.mamoe.mirai.message.data.At
 import net.mamoe.mirai.message.data.Image
 import net.mamoe.mirai.message.data.MessageChain
@@ -35,7 +34,6 @@ import java.io.InputStream
 import java.time.Duration
 import java.time.LocalDateTime
 import javax.imageio.ImageIO
-import kotlin.time.ExperimentalTime
 import kotlin.time.toKotlinDuration
 
 /**
@@ -71,11 +69,11 @@ object CometUtil {
         }.trim()
     }
 
-    fun toChain(otherText: String?, addPrefix: Boolean = true): MessageChain =
+    fun toMessageChain(otherText: String?, addPrefix: Boolean = true): MessageChain =
         sendMessageAsString(otherText, addPrefix).convertToChain()
 
     @JvmName("stringAsChain")
-    fun String?.toChain(addPrefix: Boolean = true): MessageChain = toChain(this, addPrefix)
+    fun String?.toMessageChain(addPrefix: Boolean = true): MessageChain = toMessageChain(this, addPrefix)
 
     fun List<String>.getRestString(startAt: Int, joinRune: String = " "): String {
         if (isEmpty()) {
@@ -89,14 +87,13 @@ object CometUtil {
         }.trim().removeSuffix(joinRune)
     }
 
-    @OptIn(ExperimentalTime::class)
     fun getRunningTime(): String {
         val remain = Duration.between(CometVariables.startTime, LocalDateTime.now())
         return remain.toKotlinDuration().toFriendly()
     }
 
-    fun parseAtToId(event: MessageEvent, possibleID: String): Long {
-        event.message.forEach {
+    fun parseAtToId(chain: MessageChain, possibleID: String): Long {
+        chain.forEach {
             if (it is At) {
                 return it.target
             }
@@ -109,9 +106,8 @@ object CometUtil {
         }
     }
 
-    fun parseAtAsBotUser(event: MessageEvent, id: String): CometUser? = getUser(parseAtToId(event, id))
+    fun parseAtAsBotUser(chain: MessageChain, id: String): CometUser? = getUser(parseAtToId(chain, id))
 
-    @OptIn(ExperimentalTime::class)
     fun getMemoryUsage(): String =
         "OS 信息: ${getOsInfo()}\n" +
                 "JVM 版本: ${getJVMVersion()}\n" +

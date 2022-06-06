@@ -13,29 +13,30 @@ package io.github.starwishsama.comet.objects.wrapper
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize
+import io.github.starwishsama.comet.CometVariables
 import io.github.starwishsama.comet.utils.StringUtil.base64ToImage
 import io.github.starwishsama.comet.utils.network.NetUtil
-import io.github.starwishsama.comet.utils.serialize.WrapperConverter
 import io.github.starwishsama.comet.utils.uploadAsImage
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import net.mamoe.mirai.contact.AudioSupported
 import net.mamoe.mirai.contact.Contact
-import net.mamoe.mirai.message.data.*
+import net.mamoe.mirai.message.data.At
+import net.mamoe.mirai.message.data.MessageContent
+import net.mamoe.mirai.message.data.PlainText
+import net.mamoe.mirai.message.data.SimpleServiceMessage
 import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
 import net.mamoe.mirai.utils.ExternalResource.Companion.uploadAsImage
 import net.mamoe.mirai.utils.MiraiExperimentalApi
 import java.io.File
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-@JsonDeserialize(using = WrapperConverter::class)
-@JsonTypeInfo(use = JsonTypeInfo.Id.NONE, include = JsonTypeInfo.As.PROPERTY)
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "className")
 @JsonSubTypes(
-    JsonSubTypes.Type(value = PureText::class, name = "PureText"),
-    JsonSubTypes.Type(value = Picture::class, name = "Picture"),
-    JsonSubTypes.Type(value = AtElement::class, name = "AtElement"),
-    JsonSubTypes.Type(value = XmlElement::class, name = "XmlElement")
+    JsonSubTypes.Type(value = PureText::class, name = "io.github.starwishsama.comet.objects.wrapper.PureText"),
+    JsonSubTypes.Type(value = Picture::class, name = "io.github.starwishsama.comet.objects.wrapper.Picture"),
+    JsonSubTypes.Type(value = AtElement::class, name = "io.github.starwishsama.comet.objects.wrapper.AtElement"),
+    JsonSubTypes.Type(value = XmlElement::class, name = "io.github.starwishsama.comet.objects.wrapper.XmlElement")
 )
 interface WrapperElement {
     val className: String
@@ -73,29 +74,43 @@ data class PureText(val text: String) : WrapperElement {
  * @param filePath 图片本地路径
  */
 @Serializable
-data class Picture(val url: String = "", val filePath: String = "", val base64: String = "") : WrapperElement {
+data class Picture(
+    val url: String = "",
+    val filePath: String = "",
+    val base64: String = "",
+    val fileFormat: String = ""
+) : WrapperElement {
 
     init {
         if (url.isEmpty() && filePath.isEmpty() && base64.isEmpty()) {
-            throw IllegalArgumentException("url or filePath can't be null or empty!")
+            throw IllegalArgumentException("url/filePath/base64 can't be null or empty!")
         }
     }
 
     override val className: String = this::class.java.name
 
-    override fun toMessageContent(subject: Contact?): Image {
-        requireNotNull(subject) { "subject cannot be null!" }
+    override fun toMessageContent(subject: Contact?): MessageContent {
+        if (subject == null) {
+            return PlainText("[图片]")
+        }
 
-        if (url.isNotEmpty()) {
-            NetUtil.getInputStream(url)?.use {
-                return runBlocking { it.uploadAsImage(subject) }
+        try {
+            if (url.isNotEmpty()) {
+                NetUtil.getInputStream(url)?.use {
+                    return runBlocking {
+                        it.uploadAsImage(subject, fileFormat.ifEmpty { null })
+                    }
+                }
+            } else if (filePath.isNotEmpty()) {
+                if (filePath.isNotEmpty() && File(filePath).exists()) {
+                    return runBlocking { File(filePath).uploadAsImage(subject, fileFormat.ifEmpty { null }) }
+                }
+            } else if (base64.isNotEmpty()) {
+                return base64.toByteArray().base64ToImage().uploadAsImage(subject)
             }
-        } else if (filePath.isNotEmpty()) {
-            if (filePath.isNotEmpty() && File(filePath).exists()) {
-                return runBlocking { File(filePath).uploadAsImage(subject) }
-            }
-        } else if (base64.isNotEmpty()) {
-            return base64.toByteArray().base64ToImage().uploadAsImage(subject)
+        } catch (e: Exception) {
+            CometVariables.daemonLogger.warning("在转换图片时出现了问题, Wrapper 原始内容为: ${toString()}")
+            return PlainText("[图片]")
         }
 
         throw RuntimeException("Unable to convert Picture to Image, Picture raw content: $this")

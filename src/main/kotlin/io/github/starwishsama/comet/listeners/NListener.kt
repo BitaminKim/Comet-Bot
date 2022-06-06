@@ -13,6 +13,7 @@ package io.github.starwishsama.comet.listeners
 import io.github.starwishsama.comet.CometVariables
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.event.Event
+import net.mamoe.mirai.event.events.MessageEvent
 import net.mamoe.mirai.event.globalEventChannel
 import kotlin.reflect.KClass
 import kotlin.reflect.KFunction
@@ -65,7 +66,16 @@ fun INListener.register(bot: Bot) {
                 @Suppress("UNCHECKED_CAST")
                 bot.globalEventChannel().subscribeAlways(clazz) { subEvent ->
                     if (CometVariables.switch) {
-                        method.call(this@register, subEvent)
+                        // Don't handle self message to avoid ban
+                        if (subEvent is MessageEvent && subEvent.sender.id == subEvent.bot.id) {
+                            return@subscribeAlways
+                        }
+
+                        try {
+                            method.call(this@register, subEvent)
+                        } catch (e: Exception) {
+                            CometVariables.daemonLogger.warning("${this@register.name} 在运行时发生了异常", e.cause)
+                        }
                     }
                 }
             }

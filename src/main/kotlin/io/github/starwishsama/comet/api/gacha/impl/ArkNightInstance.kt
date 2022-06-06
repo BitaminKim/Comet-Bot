@@ -24,9 +24,14 @@ import io.github.starwishsama.comet.objects.gacha.pool.ArkNightPool
 import io.github.starwishsama.comet.objects.gacha.pool.GachaPool
 import io.github.starwishsama.comet.objects.wrapper.MessageWrapper
 import io.github.starwishsama.comet.service.gacha.GachaConstants
-import io.github.starwishsama.comet.utils.*
+import io.github.starwishsama.comet.utils.FileUtil
+import io.github.starwishsama.comet.utils.GachaUtil
 import io.github.starwishsama.comet.utils.NumberUtil.toLocalDateTime
+import io.github.starwishsama.comet.utils.RuntimeUtil
 import io.github.starwishsama.comet.utils.StringUtil.getLastingTimeAsString
+import io.github.starwishsama.comet.utils.TaskUtil
+import io.github.starwishsama.comet.utils.filesCount
+import io.github.starwishsama.comet.utils.getChildFolder
 import io.github.starwishsama.comet.utils.math.MathUtil
 import io.github.starwishsama.comet.utils.network.NetUtil
 import kotlinx.coroutines.delay
@@ -42,7 +47,7 @@ import java.time.format.DateTimeFormatter
 import java.util.*
 
 object ArkNightInstance : GachaInstance("明日方舟") {
-    var usable: Boolean = false
+    var usable: Boolean = true
         private set
     var isDownloading = false
         private set
@@ -51,7 +56,7 @@ object ArkNightInstance : GachaInstance("明日方舟") {
 
     private const val arkNightDataApi = "https://api.github.com/repos/Kengxxiao/ArknightsGameData"
     private const val dataURL =
-        "https://raw.fastgit.org/Kengxxiao/ArknightsGameData/master/zh_CN/gamedata/excel/character_table.json"
+        "https://cdn.jsdelivr.net/gh/Kengxxiao/ArknightsGameData@master/zh_CN/gamedata/excel/character_table.json"
 
     /** 明日方舟卡池数据 */
     private val arkNight: MutableList<ArkNightOperator> = mutableListOf()
@@ -72,6 +77,7 @@ object ArkNightInstance : GachaInstance("明日方舟") {
         if (!dataLocation.exists()) {
             CometVariables.daemonLogger.info("未检测到明日方舟游戏数据, 抽卡模拟器将无法使用")
             usable = false
+            return
         }
 
         CometVariables.mapper.readTree(dataLocation).elements().forEach { t ->
@@ -87,7 +93,7 @@ object ArkNightInstance : GachaInstance("明日方舟") {
                 System.setProperty("java.awt.headless", "true")
             }
 
-            TaskUtil.dispatcher.run {
+            TaskUtil.schedule {
                 checkArkNightImage()
             }
         }
@@ -121,14 +127,16 @@ object ArkNightInstance : GachaInstance("明日方舟") {
             } else if (needUpdate) {
                 // 这个检测并不准确, 因为其他服务器数据更新的时候也算, 而 Github API 似乎看不到最新 commit (?)
                 CometVariables.daemonLogger.info("明日方舟干员数据更新了, 正在下载...")
-                TaskUtil.dispatcher.runCatching {
-                    val cache = NetUtil.downloadFile(FileUtil.getCacheFolder(), dataURL, location.name)
-                    cache.deleteOnExit()
-                    Files.copy(cache.toPath(), location.toPath(), StandardCopyOption.REPLACE_EXISTING)
-                }.onSuccess {
-                    CometVariables.daemonLogger.info("成功下载明日方舟干员数据!")
-                }.onFailure {
-                    CometVariables.daemonLogger.error("明日方舟干员数据下载失败, 将使用缓存数据", it)
+                TaskUtil.schedule {
+                    runCatching {
+                        val cache = NetUtil.downloadFile(FileUtil.getCacheFolder(), dataURL, location.name)
+                        cache.deleteOnExit()
+                        Files.copy(cache.toPath(), location.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                    }.onSuccess {
+                        CometVariables.daemonLogger.info("成功下载明日方舟干员数据!")
+                    }.onFailure {
+                        CometVariables.daemonLogger.error("明日方舟干员数据下载失败, 将使用缓存数据", it)
+                    }
                 }
             } else {
                 CometVariables.daemonLogger.info("明日方舟干员数据为最新版本")
@@ -162,8 +170,7 @@ object ArkNightInstance : GachaInstance("明日方舟") {
             startTime,
             endTime
         ) {
-            (GachaUtil.hasOperator(this.name) || customPool.modifiedGachaItems.stream().filter { it.name == this.name }
-                .findAny().isPresent) &&
+            (GachaUtil.hasOperator(this.name) || customPool.modifiedGachaItems.any { it.name == this.name }) &&
                     (if (customPool.condition.isNotEmpty()) !customPool.condition.contains(obtain) else true)
         }
 

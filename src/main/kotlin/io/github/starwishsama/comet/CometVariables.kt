@@ -13,9 +13,9 @@ package io.github.starwishsama.comet
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer
+import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalTimeDeserializer
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer
@@ -25,16 +25,14 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.github.starwishsama.comet.logger.HinaLogger
 import io.github.starwishsama.comet.objects.CometUser
 import io.github.starwishsama.comet.objects.config.CometConfig
-import io.github.starwishsama.comet.objects.wrapper.WrapperElement
 import io.github.starwishsama.comet.service.server.CometServiceServer
 import io.github.starwishsama.comet.utils.FileUtil
 import io.github.starwishsama.comet.utils.LoggerAppender
-import io.github.starwishsama.comet.utils.serialize.LocalDateTimeConverter
-import io.github.starwishsama.comet.utils.serialize.WrapperConverter
 import net.kronos.rkon.core.Rcon
 import net.mamoe.mirai.utils.MiraiInternalApi
 import okhttp3.OkHttpClient
 import java.io.File
+import java.security.SecureRandom
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -77,18 +75,18 @@ object CometVariables {
         }
     }
 
-    val logger: HinaLogger = HinaLogger("Comet", logAction = { logAction(it) }, debugMode = cfg.debugMode)
+    val logger: HinaLogger = HinaLogger("Comet", logAction = { logAction(it) }, filterList = cfg.filterWords, defaultLevel = cfg.logLevel)
 
     internal val netLogger: HinaLogger by lazy {
-        HinaLogger("CometNet", logAction = { logAction(it) }, debugMode = cfg.debugMode)
+        HinaLogger("CometNet", logAction = { logAction(it) }, filterList = cfg.filterWords, defaultLevel = cfg.logLevel)
     }
 
     internal val daemonLogger: HinaLogger by lazy {
-        HinaLogger("CometService", logAction = { logAction(it) }, debugMode = cfg.debugMode)
+        HinaLogger("CometService", logAction = { logAction(it) }, filterList = cfg.filterWords, defaultLevel = cfg.logLevel)
     }
 
     internal val consoleCommandLogger: HinaLogger by lazy {
-        HinaLogger("CometConsole", logAction = { logAction(it) }, debugMode = cfg.debugMode)
+        HinaLogger("CometConsole", logAction = { logAction(it) }, filterList = cfg.filterWords, defaultLevel = cfg.logLevel)
     }
 
     internal val miraiLogger: HinaLogger by lazy {
@@ -97,7 +95,7 @@ object CometVariables {
             if (::miraiLoggerAppender.isInitialized) {
                 miraiLoggerAppender.appendLog(it)
             }
-        }, debugMode = cfg.debugMode)
+        }, filterList = cfg.filterWords, defaultLevel = cfg.logLevel)
     }
 
     internal val miraiNetLogger: HinaLogger by lazy {
@@ -106,7 +104,7 @@ object CometVariables {
             if (::miraiNetLoggerAppender.isInitialized) {
                 miraiNetLoggerAppender.appendLog(it)
             }
-        }, debugMode = cfg.debugMode)
+        }, filterList = cfg.filterWords, defaultLevel = cfg.logLevel)
     }
 
     val mapper: ObjectMapper = ObjectMapper()
@@ -136,14 +134,14 @@ object CometVariables {
                     LocalTime::class.java,
                     LocalTimeDeserializer(DateTimeFormatter.ofPattern("HH:mm:ss"))
                 )
+                it.addDeserializer(
+                    LocalDateTime::class.java,
+                    LocalDateTimeDeserializer(DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"))
+                )
             },
             KotlinModule.Builder().enable(KotlinFeature.NullIsSameAsDefault)
                 .enable(KotlinFeature.NullToEmptyCollection)
-                .enable(KotlinFeature.NullToEmptyMap).build(),
-            SimpleModule().also {
-                it.addDeserializer(LocalDateTime::class.java, LocalDateTimeConverter)
-                it.addDeserializer(WrapperElement::class.java, WrapperConverter)
-            }
+                .enable(KotlinFeature.NullToEmptyMap).build()
         )
         .setDateFormat(SimpleDateFormat("yyyy/MM/dd HH:mm:ss"))
 
@@ -154,6 +152,10 @@ object CometVariables {
     @Volatile
     internal var switch: Boolean = true
 
+    internal val hmPattern: DateTimeFormatter by lazy {
+        DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+    }
+
     internal val hmsPattern: DateTimeFormatter by lazy {
         DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
     }
@@ -163,4 +165,6 @@ object CometVariables {
     }
 
     internal lateinit var client: OkHttpClient
+
+    internal val random = SecureRandom()
 }

@@ -11,12 +11,10 @@
 package io.github.starwishsama.comet.commands.chats
 
 import io.github.starwishsama.comet.CometVariables.daemonLogger
-
 import io.github.starwishsama.comet.api.command.CommandProps
 import io.github.starwishsama.comet.api.command.interfaces.ChatCommand
 import io.github.starwishsama.comet.api.thirdparty.twitter.TwitterApi
 import io.github.starwishsama.comet.api.thirdparty.twitter.data.TwitterUser
-import io.github.starwishsama.comet.exceptions.RateLimitException
 import io.github.starwishsama.comet.i18n.LocalizationManager
 import io.github.starwishsama.comet.managers.ApiManager
 import io.github.starwishsama.comet.managers.GroupConfigManager
@@ -26,7 +24,7 @@ import io.github.starwishsama.comet.objects.config.api.TwitterConfig
 import io.github.starwishsama.comet.objects.enums.UserLevel
 import io.github.starwishsama.comet.objects.tasks.network.INetworkRequestTask
 import io.github.starwishsama.comet.objects.tasks.network.NetworkRequestTask
-import io.github.starwishsama.comet.utils.CometUtil.toChain
+import io.github.starwishsama.comet.utils.CometUtil.toMessageChain
 import io.github.starwishsama.comet.utils.StringUtil.convertToChain
 import io.github.starwishsama.comet.utils.StringUtil.isNumeric
 import io.github.starwishsama.comet.utils.network.NetUtil
@@ -40,17 +38,15 @@ import net.mamoe.mirai.message.data.MessageChain
 import net.mamoe.mirai.message.data.MessageSource.Key.quote
 import net.mamoe.mirai.message.data.PlainText
 import net.mamoe.mirai.message.data.toMessageChain
-import kotlin.time.ExperimentalTime
 
 object TwitterCommand : ChatCommand {
-    @OptIn(ExperimentalTime::class)
     override suspend fun execute(event: MessageEvent, args: List<String>, user: CometUser): MessageChain {
         if (!hasPermission(user, event)) {
-            return LocalizationManager.getLocalizationText("message.no-permission").toChain()
+            return LocalizationManager.getLocalizationText("message.no-permission").toMessageChain()
         }
 
         if (ApiManager.getConfig<TwitterConfig>().token.isEmpty()) {
-            return toChain("推特推送未被正确设置, 请联系机器人管理员")
+            return toMessageChain("推特推送未被正确设置, 请联系机器人管理员")
         }
 
         return if (args.isEmpty()) {
@@ -73,7 +69,7 @@ object TwitterCommand : ChatCommand {
                 "push" -> {
                     val cfg = GroupConfigManager.getConfigOrNew(id)
                     cfg.twitterPushEnabled = !cfg.twitterPushEnabled
-                    return toChain("推特动态推送已${if (cfg.twitterPushEnabled) "开启" else "关闭"}")
+                    return toMessageChain("推特动态推送已${if (cfg.twitterPushEnabled) "开启" else "关闭"}")
                 }
                 "id" -> {
                     return if (args[1].isNumeric()) {
@@ -93,6 +89,10 @@ object TwitterCommand : ChatCommand {
                                 }
                             }
 
+                            override fun onFailure(t: Throwable?) {
+                                runBlocking { content.sendMessage("在获取推文时发生了异常".toMessageChain()) }
+                            }
+
                         }
 
                         NetworkRequestManager.addTask(task)
@@ -105,7 +105,7 @@ object TwitterCommand : ChatCommand {
                 "nopic" -> {
                     val cfg = GroupConfigManager.getConfigOrNew(id)
                     cfg.twitterPictureMode = !cfg.twitterPictureMode
-                    return toChain("推特动态推送图片已${if (cfg.twitterPushEnabled) "开启" else "关闭"}")
+                    return toMessageChain("推特动态推送图片已${if (cfg.twitterPushEnabled) "开启" else "关闭"}")
                 }
                 else -> getHelp().convertToChain()
             }
@@ -133,7 +133,6 @@ object TwitterCommand : ChatCommand {
         return false
     }
 
-    @ExperimentalTime
     private suspend fun getTweetToMessageChain(args: List<String>, event: MessageEvent): MessageChain {
         return if (args.size > 1) {
             val task = object : NetworkRequestTask(), INetworkRequestTask<MessageChain> {
@@ -144,7 +143,7 @@ object TwitterCommand : ChatCommand {
                         if (index != null) {
                             getTweetWithDesc(args[1], event.subject, index, 1 + index)
                         } else {
-                            "请输入有效的数字".toChain()
+                            "请输入有效的数字".toMessageChain()
                         }
                     } else {
                         getTweetWithDesc(args[1], event.subject, 0, 1)
@@ -162,31 +161,36 @@ object TwitterCommand : ChatCommand {
                     }
                 }
 
+                override fun onFailure(t: Throwable?) {
+                    runBlocking {
+                        content.sendMessage("在获取推文时发生了异常".toMessageChain())
+                    }
+                }
+
             }
 
             NetworkRequestManager.addTask(task)
 
-            event.message.quote() + toChain("正在查询, 请稍等")
+            event.message.quote() + toMessageChain("正在查询, 请稍等")
         } else {
             getHelp().convertToChain()
         }
     }
 
-    @ExperimentalTime
     private fun getTweetWithDesc(name: String, subject: Contact, index: Int = 1, max: Int = 10): MessageChain {
         return try {
             val tweet = TwitterApi.getTweetInTimeline(name, index, max)
             if (tweet != null) {
-                return "\n${tweet.user.name}".toChain() + "\n\n" + tweet.toMessageChain(subject)
+                return "\n${tweet.user.name}".toMessageChain() + "\n\n" + tweet.toMessageChain(subject)
             } else {
-                toChain("获取到的推文为空")
+                toMessageChain("获取到的推文为空")
             }
         } catch (t: Throwable) {
             if (NetUtil.isTimeout(t)) {
-                toChain("获取推文时连接超时")
+                toMessageChain("获取推文时连接超时")
             } else {
                 daemonLogger.warning(t)
-                toChain("获取推文时出现了异常")
+                toMessageChain("获取推文时出现了异常")
             }
         }
     }
@@ -199,21 +203,26 @@ object TwitterCommand : ChatCommand {
                     val twitterUser: TwitterUser
 
                     try {
-                        twitterUser = TwitterApi.getUserProfile(-1, args[1])[0]
-                    } catch (e: RateLimitException) {
-                        return toChain("订阅 @${args[1]} 失败")
+                        val result = TwitterApi.getUserProfile(-1, args[1])
+                        if (result.isNotEmpty()) {
+                            twitterUser = result.first()
+                        } else {
+                            return "找不到 @${args[1]}".toMessageChain()
+                        }
+                    } catch (e: Exception) {
+                        return "订阅 @${args[1]} 失败".toMessageChain()
                     }
 
                     cfg.twitterSubscribers.add(args[1])
-                    return toChain("订阅 ${twitterUser.name}(@${twitterUser.twitterId}) 成功")
+                    return toMessageChain("订阅 ${twitterUser.name}(@${twitterUser.twitterId}) 成功")
                 } else {
-                    return toChain("已经订阅过 @${args[1]} 了")
+                    return toMessageChain("已经订阅过 @${args[1]} 了")
                 }
             } else {
                 return getHelp().convertToChain()
             }
         } else {
-            return toChain("请填写正确的群号!")
+            return toMessageChain("请填写正确的群号!")
         }
     }
 
@@ -223,22 +232,21 @@ object TwitterCommand : ChatCommand {
             return if (args.size > 1) {
                 if (args[1] == "all" || args[1] == "全部") {
                     cfg.twitterSubscribers.clear()
-                    toChain("退订全部用户成功")
+                    toMessageChain("退订全部用户成功")
                 } else if (cfg.twitterSubscribers.contains(args[1])) {
                     cfg.twitterSubscribers.remove(args[1])
-                    toChain("退订 @${args[1]} 成功")
+                    toMessageChain("退订 @${args[1]} 成功")
                 } else {
-                    toChain("没有订阅过 @${args[1]}")
+                    toMessageChain("没有订阅过 @${args[1]}")
                 }
             } else {
                 getHelp().convertToChain()
             }
         } else {
-            return toChain("请填写正确的群号!")
+            return toMessageChain("请填写正确的群号!")
         }
     }
 
-    @ExperimentalTime
     private fun getTweetByID(id: Long, target: Contact): MessageChain =
         TwitterApi.getTweetById(id)?.toMessageChain(target)
             ?: PlainText("找不到对应ID的推文").toMessageChain()
